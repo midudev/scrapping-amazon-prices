@@ -26,20 +26,18 @@ const getDecodoAuth = (): string => {
 }
 
 export const scrapeProduct = async (asin: string): Promise<ProductSnapshot> => {
-  const amazonUrl = `https://www.amazon.es/dp/${asin}`
-
   const response = await fetch("https://scraper-api.decodo.com/v2/scrape", {
     method: "POST",
+    body: JSON.stringify({
+      "target": "amazon_product",
+      "query": asin,
+      "domain": "es",
+      "parse": true
+    }),
     headers: {
       "Content-Type": "application/json",
-      Authorization: getDecodoAuth(),
+      "Authorization": getDecodoAuth()
     },
-    body: JSON.stringify({
-      target: "amazon_pricing",
-      query: amazonUrl,
-      headless: "html",
-      page_from: "1",
-    }),
   })
 
   if (!response.ok) {
@@ -48,14 +46,14 @@ export const scrapeProduct = async (asin: string): Promise<ProductSnapshot> => {
   }
 
   const data = (await response.json()) as DecodoApiResponse
-  const item = data.results?.[0]?.content
+  const item = data.results?.[0]?.content?.results
 
   return {
     asin: item?.asin ?? asin,
-    title: item?.title ?? null,
+    title: item?.title ?? item?.product_name ?? null,
     price: toNumber(item?.price),
     currency: item?.currency ?? null,
-    availability: item?.availability ?? null,
+    availability: item?.availability ?? item?.stock ?? null,
     rating: toNumber(item?.rating),
     reviewsCount: toInteger(item?.reviews_count),
     url: item?.url ?? null,

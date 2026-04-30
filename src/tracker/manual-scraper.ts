@@ -2,9 +2,6 @@ process.loadEnvFile()
 
 import { writeFileSync } from "node:fs"
 
-// import { initDb } from "../db/schema.js"
-//import { saveSnapshot } from "../db/queries.js"
-
 const asins = (process.env.AMAZON_ASINS ?? "").split(",").map((s) => s.trim()).filter(Boolean)
 const store = process.env.AMAZON_STORE ?? "es"
 const domain = `www.amazon.${store}`
@@ -64,12 +61,9 @@ async function main() {
   console.log("Scraping manual de Amazon (sin proxy, sin API)")
   console.log(`Store: ${domain} — ASINs: ${asins.join(", ")}`)
 
-  // await initDb()
-
   for (const asin of asins) {
     try {
       const data = await scrape(asin)
-      // await saveSnapshot(data)
 
       console.log(`  Título:   ${data.title ?? "no encontrado"}`)
       console.log(`  Precio:   ${data.price ?? "no encontrado"} ${data.currency ?? ""}`)

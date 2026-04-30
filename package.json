@@ -11,11 +11,12 @@
     "preview": "astro preview",
     "astro": "astro",
     "track": "tsx src/tracker/index.ts",
-    "track:manual": "tsx src/tracker/manual-scraper.ts"
+    "track:manual": "tsx src/tracker/manual-scraper.ts",
+    "track:proxy": "tsx src/tracker/proxy-scraper.ts"
   },
   "dependencies": {
     "@libsql/client": "0.15.15",
-    "astro": "6.1.2",
+    "astro": "6.2.1",
     "dotenv": "17.2.3"
   },
   "devDependencies": {

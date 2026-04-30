@@ -67,6 +67,14 @@ pnpm track:manual
 
 Este modo hace fetch directo contra Amazon y puede fallar por CAPTCHA o bloqueo.
 
+### 2.1) Ejecutar scraping manual usando Proxy + Decodo
+
+```bash
+pnpm track:manual:proxy
+```
+
+Este modo reutiliza el scraper por API (Decodo) y muestra logs manuales por ASIN indicando que la solicitud se realiza por proxy.
+
 ### 3) Ver dashboard local
 
 ```bash
@@ -86,6 +94,7 @@ Abre la URL que muestra Astro (normalmente `http://localhost:4321`) para ver:
 - `pnpm preview`: sirve el build local
 - `pnpm track`: ejecuta scraper API + persistencia
 - `pnpm track:manual`: ejecuta scraper manual + persistencia
+- `pnpm track:manual:proxy`: ejecuta scraper manual de consola usando Decodo (proxy)
 
 ## Automatización con GitHub Actions
 

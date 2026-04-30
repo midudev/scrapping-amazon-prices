@@ -33,4 +33,4 @@ jobs:
           TURSO_DATABASE_URL: ${{ secrets.TURSO_DATABASE_URL }}
           TURSO_AUTH_TOKEN: ${{ secrets.TURSO_AUTH_TOKEN }}
           AMAZON_ASINS: ${{ secrets.AMAZON_ASINS }}
-        run: pnpm track
+        run: pnpm track:proxy
