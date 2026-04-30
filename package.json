@@ -9,9 +9,17 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "track": "tsx src/tracker/index.ts",
+    "track:manual": "tsx src/tracker/manual-scraper.ts"
   },
   "dependencies": {
-    "astro": "^6.1.2"
+    "@libsql/client": "0.15.15",
+    "astro": "6.1.2",
+    "dotenv": "17.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.7.2",
+    "tsx": "4.20.6"
   }
 }

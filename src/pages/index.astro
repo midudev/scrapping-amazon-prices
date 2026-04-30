@@ -1,11 +1,512 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
+import Layout from "../layouts/Layout.astro"
+import type { PriceRow } from "../db/queries.js"
 
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+// Astro/Vite carga .env en import.meta.env, no en process.env
+process.env.TURSO_DATABASE_URL ??= import.meta.env.TURSO_DATABASE_URL
+process.env.TURSO_AUTH_TOKEN ??= import.meta.env.TURSO_AUTH_TOKEN
+
+type ProductSummary = {
+  asin: string
+  title: string | null
+  url: string | null
+  currency: string | null
+  latestPrice: number | null
+  previousPrice: number | null
+  minPrice: number
+  maxPrice: number
+  availability: string | null
+  rating: number | null
+  snapshots: number
+  lastSeen: string
+}
+
+let allPoints: PriceRow[] = []
+let products: ProductSummary[] = []
+let chartError: string | null = null
+
+try {
+  const { getAllSnapshots } = await import("../db/queries.js")
+  allPoints = await getAllSnapshots()
+
+  const grouped = new Map<string, PriceRow[]>()
+  for (const point of allPoints) {
+    const list = grouped.get(point.asin) ?? []
+    list.push(point)
+    grouped.set(point.asin, list)
+  }
+
+  products = [...grouped.entries()].map(([asin, points]) => {
+    const prices = points.map((p) => p.price)
+    const latest = points.at(-1)!
+    const previous = points.length > 1 ? points.at(-2)! : null
+
+    return {
+      asin,
+      title: latest.title,
+      url: latest.url,
+      currency: latest.currency,
+      latestPrice: latest.price,
+      previousPrice: previous?.price ?? null,
+      minPrice: Math.min(...prices),
+      maxPrice: Math.max(...prices),
+      availability: latest.availability,
+      rating: latest.rating,
+      snapshots: points.length,
+      lastSeen: latest.scrapedAt,
+    }
+  })
+} catch (error) {
+  chartError = error instanceof Error ? error.message : "Error de conexion"
+}
+
+// --- Chart data ---
+const trackedAsins = products.map((p) => p.asin)
+const groupedByAsin = new Map<string, PriceRow[]>()
+for (const point of allPoints) {
+  const list = groupedByAsin.get(point.asin) ?? []
+  list.push(point)
+  groupedByAsin.set(point.asin, list)
+}
+
+const palette = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"]
+const colorMap = new Map(trackedAsins.map((asin, i) => [asin, palette[i % palette.length]]))
+
+const allPrices = allPoints.map((p) => p.price)
+const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : 0
+const maxPrice = allPrices.length > 0 ? Math.max(...allPrices) : 0
+const margin = (maxPrice - minPrice) * 0.1 || 1
+const yMin = minPrice - margin
+const yMax = maxPrice + margin
+
+const allDates = allPoints.map((p) => new Date(p.scrapedAt).getTime())
+const minDate = allDates.length > 0 ? Math.min(...allDates) : 0
+const maxDate = allDates.length > 0 ? Math.max(...allDates) : 0
+
+const W = 900
+const H = 340
+const PL = 58
+const PR = 16
+const PT = 16
+const PB = 44
+const PW = W - PL - PR
+const PH = H - PT - PB
+
+const x = (ts: number) => maxDate === minDate ? PL + PW / 2 : PL + ((ts - minDate) / (maxDate - minDate)) * PW
+const y = (p: number) => yMax === yMin ? PT + PH / 2 : PT + ((yMax - p) / (yMax - yMin)) * PH
+
+const yTicks = Array.from({ length: 5 }, (_, i) => yMax - (i / 4) * (yMax - yMin))
+
+const uniqueDays = [...new Set(allPoints.map((p) => p.scrapedAt.slice(0, 10)))]
+const xTickCount = Math.min(6, uniqueDays.length)
+const xStep = allDates.length > 1 ? (maxDate - minDate) / Math.max(xTickCount - 1, 1) : 0
+const xTicks = Array.from({ length: xTickCount }, (_, i) => {
+  const ts = minDate + i * xStep
+  return { x: x(ts), label: new Date(ts).toLocaleDateString("es-ES", { day: "2-digit", month: "short" }) }
+})
+
+const series = trackedAsins.map((asin) => {
+  const pts = groupedByAsin.get(asin) ?? []
+  const d = pts
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x(new Date(p.scrapedAt).getTime()).toFixed(1)} ${y(p.price).toFixed(1)}`)
+    .join(" ")
+  return { asin, pts, d, color: colorMap.get(asin)! }
+})
+
+const fmt = (n: number) => `${n.toFixed(2)} €`
+const fmtDate = (s: string) => new Date(s).toLocaleDateString("es-ES", { day: "2-digit", month: "short" })
+const delta = (a: number | null, b: number | null) =>
+  a != null && b != null && b !== 0 ? ((a - b) / b) * 100 : null
 ---
 
 <Layout>
-	<Welcome />
+  <main class="page">
+    <header class="top">
+      <h1>Price Tracker</h1>
+      {products.length > 0 && (
+        <p class="meta">
+          {products.length} productos · {allPoints.length} registros · {uniqueDays.length} dias
+        </p>
+      )}
+    </header>
+
+    {chartError ? (
+      <div class="notice">{chartError}</div>
+    ) : (
+      <>
+        <section class="cards">
+          {products.map((p) => {
+            const d = delta(p.latestPrice, p.previousPrice)
+            const color = colorMap.get(p.asin)!
+            return (
+              <article class="card">
+                <div class="card-top">
+                  <span class="dot" style={`background:${color}`} />
+                  <span class="asin">{p.asin}</span>
+                  {p.rating != null && <span class="rating">★ {p.rating.toFixed(1)}</span>}
+                </div>
+
+                {p.title && (
+                  <h3 class="title">
+                    {p.url
+                      ? <a href={p.url} target="_blank" rel="noopener noreferrer">{p.title}</a>
+                      : p.title}
+                  </h3>
+                )}
+
+                <div class="price-line">
+                  <span class="price">{p.latestPrice != null ? fmt(p.latestPrice) : "—"}</span>
+                  {d != null && (
+                    <span class={`delta ${d > 0 ? "up" : d < 0 ? "down" : ""}`}>
+                      {d > 0 ? "+" : ""}{d.toFixed(1)}%
+                    </span>
+                  )}
+                </div>
+
+                <div class="range">
+                  <span>{fmt(p.minPrice)}</span>
+                  <span class="range-bar"><span class="range-fill" style={`background:${color}`} /></span>
+                  <span>{fmt(p.maxPrice)}</span>
+                </div>
+              </article>
+            )
+          })}
+        </section>
+
+        <section class="chart-box">
+          <div class="chart-head">
+            <h2>Evolucion de precios</h2>
+            <div class="legend">
+              {series.map((s) => (
+                <span class="legend-item">
+                  <span class="dot" style={`background:${s.color}`} />
+                  {s.asin}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div class="chart" id="chart-container">
+            <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Grafico de precios">
+              {yTicks.map((v) => (
+                <g>
+                  <line x1={PL} y1={y(v)} x2={W - PR} y2={y(v)} class="grid" />
+                  <text x={PL - 8} y={y(v) + 4} class="label" text-anchor="end">{v.toFixed(0)} €</text>
+                </g>
+              ))}
+
+              {xTicks.map((t) => (
+                <text x={t.x} y={H - PB + 20} class="label" text-anchor="middle">{t.label}</text>
+              ))}
+
+              {series.map((s) => (
+                <path d={s.d} fill="none" stroke={s.color} stroke-width="2" stroke-linejoin="round" />
+              ))}
+
+              {series.map((s) =>
+                s.pts.map((pt) => (
+                  <circle
+                    cx={x(new Date(pt.scrapedAt).getTime())}
+                    cy={y(pt.price)}
+                    r="3"
+                    fill={s.color}
+                    class="point"
+                    data-price={pt.price.toFixed(2)}
+                    data-date={fmtDate(pt.scrapedAt)}
+                    data-color={s.color}
+                  />
+                ))
+              )}
+            </svg>
+            <div class="tooltip" id="chart-tooltip"></div>
+          </div>
+        </section>
+      </>
+    )}
+  </main>
 </Layout>
+
+<style>
+  * { box-sizing: border-box; }
+
+  .page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 4rem;
+    color: #e4e4e7;
+    font-family: system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+  }
+
+  .top {
+    margin-bottom: 2rem;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: 0;
+    color: #fafafa;
+    letter-spacing: -0.02em;
+  }
+
+  .meta {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: #71717a;
+  }
+
+  .notice {
+    padding: 1.5rem;
+    border: 1px dashed #27272a;
+    border-radius: 8px;
+    color: #71717a;
+    text-align: center;
+    font-size: 0.9rem;
+  }
+
+  .notice code {
+    color: #a1a1aa;
+    background: #18181b;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85rem;
+  }
+
+  /* --- Cards --- */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .card {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    padding: 1rem;
+  }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  .asin {
+    font-size: 0.7rem;
+    color: #52525b;
+    font-family: ui-monospace, monospace;
+    letter-spacing: 0.03em;
+  }
+
+  .rating {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: #a1a1aa;
+  }
+
+  .title {
+    font-size: 0.85rem;
+    font-weight: 400;
+    margin: 0 0 0.6rem;
+    line-height: 1.4;
+    color: #a1a1aa;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .title a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .title a:hover {
+    color: #e4e4e7;
+  }
+
+  .price-line {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .price {
+    font-size: 1.4rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: #fafafa;
+  }
+
+  .delta {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #71717a;
+  }
+  .delta.up { color: #ef4444; }
+  .delta.down { color: #22c55e; }
+
+  .range {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.7rem;
+    color: #52525b;
+  }
+
+  .range-bar {
+    flex: 1;
+    height: 2px;
+    background: #27272a;
+    border-radius: 1px;
+    position: relative;
+  }
+
+  .range-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: 1px;
+    opacity: 0.4;
+  }
+
+  /* --- Chart --- */
+  .chart-box {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 10px;
+    padding: 1rem;
+  }
+
+  .chart-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .chart-box h2 {
+    font-size: 0.85rem;
+    font-weight: 500;
+    margin: 0;
+    color: #a1a1aa;
+  }
+
+  .legend {
+    display: flex;
+    gap: 1rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    color: #71717a;
+    font-family: ui-monospace, monospace;
+  }
+
+  .chart {
+    border-radius: 6px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  .grid {
+    stroke: #27272a;
+    stroke-width: 1;
+  }
+
+  .label {
+    fill: #3f3f46;
+    font-size: 10px;
+    font-family: ui-monospace, monospace;
+  }
+
+  .point {
+    cursor: pointer;
+    transition: r 120ms ease;
+  }
+
+  .point:hover {
+    r: 5;
+  }
+
+  .tooltip {
+    position: absolute;
+    pointer-events: none;
+    background: #fafafa;
+    color: #18181b;
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 100ms ease;
+    transform: translate(-50%, -100%);
+    margin-top: -10px;
+    font-family: ui-monospace, monospace;
+  }
+
+  .tooltip.visible {
+    opacity: 1;
+  }
+
+  @media (max-width: 640px) {
+    .cards { grid-template-columns: 1fr; }
+    .chart-head { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+
+<script>
+  const container = document.getElementById("chart-container")
+  const tooltip = document.getElementById("chart-tooltip")
+  if (container && tooltip) {
+    const svg = container.querySelector("svg")!
+    const points = container.querySelectorAll<SVGCircleElement>(".point")
+
+    points.forEach((point) => {
+      point.addEventListener("mouseenter", () => {
+        const price = point.dataset.price
+        const date = point.dataset.date
+        tooltip.textContent = `${price} € · ${date}`
+        tooltip.classList.add("visible")
+
+        const svgRect = svg.getBoundingClientRect()
+        const viewBox = svg.viewBox.baseVal
+        const cx = parseFloat(point.getAttribute("cx")!)
+        const cy = parseFloat(point.getAttribute("cy")!)
+
+        const px = (cx / viewBox.width) * svgRect.width
+        const py = (cy / viewBox.height) * svgRect.height
+
+        tooltip.style.left = `${px}px`
+        tooltip.style.top = `${py}px`
+      })
+
+      point.addEventListener("mouseleave", () => {
+        tooltip.classList.remove("visible")
+      })
+    })
+  }
+</script>
