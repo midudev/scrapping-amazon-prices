@@ -1,4 +1,6 @@
-process.loadEnvFile()
+import { loadEnvFileIfPresent } from "./load-env.js"
+
+loadEnvFileIfPresent()
 
 import { scrapeProduct } from "./scraper.js"
 import { initDb } from "../db/schema.js"

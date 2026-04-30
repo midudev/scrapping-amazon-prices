@@ -1,4 +1,6 @@
-process.loadEnvFile()
+import { loadEnvFileIfPresent } from "./load-env.js"
+
+loadEnvFileIfPresent()
 
 import { writeFileSync } from "node:fs"
 

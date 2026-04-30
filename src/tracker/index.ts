@@ -1,4 +1,6 @@
-process.loadEnvFile()
+import { loadEnvFileIfPresent } from "./load-env.js"
+
+loadEnvFileIfPresent()
 
 import { initDb } from "../db/schema.js"
 import { saveSnapshot } from "../db/queries.js"

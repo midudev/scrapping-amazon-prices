@@ -1,4 +1,6 @@
-process.loadEnvFile()
+import { loadEnvFileIfPresent } from "./load-env.js"
+
+loadEnvFileIfPresent()
 
 import type { ProductSnapshot } from "../db/queries.js"
 import type { DecodoApiResponse } from "./types.js"
